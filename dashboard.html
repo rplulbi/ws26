@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API Usage Dashboard</title>
+  <script>
+    // Guard: tolak akses jika belum login (dijalankan sebelum halaman tampil)
+    (function () {
+      var s = null;
+      try { s = sessionStorage.getItem("pickup_session") || localStorage.getItem("pickup_session"); } catch (_) {}
+      if (!s) location.replace("login.html");
+      try { var t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (_) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f7f7f5; --surface: #ffffff; --surface-2: #f0efeb; --border: #e2e0da;
+      --text: #1d1c1a; --muted: #6b6860; --accent: #d9480f; --accent-soft: #fff0e8;
+      --ok: #2b8a3e; --ok-bg: #e6f4ea; --warn: #b26a00; --warn-bg: #fff3dc; --bad: #c92a2a; --bad-bg: #fdeaea;
+      --get: #1c7ed6; --get-bg: #e7f1fc; --post: #2b8a3e; --post-bg: #e6f4ea;
+      --patch: #7048e8; --patch-bg: #efeafd; --delete: #c92a2a; --delete-bg: #fdeaea;
+      --c1: #d9480f; --c2: #1c7ed6; --c3: #2b8a3e; --c4: #7048e8; --c5: #b26a00; --c6: #0c8599;
+      --grid: #ebe9e4;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #131416; --surface: #1b1c1f; --surface-2: #232428; --border: #2e3035;
+        --text: #ececea; --muted: #9c9a94; --accent: #ff7a3d; --accent-soft: #2d1d14;
+        --ok: #69c27f; --ok-bg: #15291b; --warn: #f0b44c; --warn-bg: #2e2412; --bad: #f27474; --bad-bg: #361818;
+        --get: #74b5f5; --get-bg: #16263a; --post: #69c27f; --post-bg: #15291b;
+        --patch: #a991f7; --patch-bg: #231c3a; --delete: #f27474; --delete-bg: #361818;
+        --c1: #ff7a3d; --c2: #74b5f5; --c3: #69c27f; --c4: #a991f7; --c5: #f0b44c; --c6: #4fc3d4;
+        --grid: #2a2c30;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #131416; --surface: #1b1c1f; --surface-2: #232428; --border: #2e3035;
+      --text: #ececea; --muted: #9c9a94; --accent: #ff7a3d; --accent-soft: #2d1d14;
+      --ok: #69c27f; --ok-bg: #15291b; --warn: #f0b44c; --warn-bg: #2e2412; --bad: #f27474; --bad-bg: #361818;
+      --get: #74b5f5; --get-bg: #16263a; --post: #69c27f; --post-bg: #15291b;
+      --patch: #a991f7; --patch-bg: #231c3a; --delete: #f27474; --delete-bg: #361818;
+      --c1: #ff7a3d; --c2: #74b5f5; --c3: #69c27f; --c4: #a991f7; --c5: #f0b44c; --c6: #4fc3d4;
+      --grid: #2a2c30;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14.5px/1.55 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); text-decoration: none; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+    /* Topbar */
+    .topbar { position: sticky; top: 0; z-index: 20; height: 60px; display: flex; align-items: center; gap: 14px; padding: 0 24px; background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); }
+    .brand-logo { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; color: #fff; }
+    .nav { display: flex; gap: 4px; margin-left: 12px; }
+    .nav a { padding: 6px 12px; border-radius: 6px; color: var(--muted); font-weight: 500; }
+    .nav a:hover { background: var(--surface-2); color: var(--text); }
+    .nav a.active { background: var(--accent-soft); color: var(--accent); }
+    .spacer { flex: 1; }
+    .icon-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; display: grid; place-items: center; }
+    .icon-btn:hover { background: var(--surface-2); }
+    .user { position: relative; }
+    .user-btn { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface); color: var(--text); cursor: pointer; font: inherit; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 12px; }
+    .user-menu { display: none; position: absolute; right: 0; top: 44px; width: 220px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,.12); padding: 6px; }
+    .user-menu.open { display: block; }
+    .user-menu .info { padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; font-size: 13px; }
+    .user-menu .info b { display: block; font-size: 14px; }
+    .user-menu button { width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: none; color: var(--bad); font: 500 13.5px Inter, sans-serif; cursor: pointer; }
+    .user-menu button:hover { background: var(--bad-bg); }
+
+    main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 80px; }
+    .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+    h1 { font-size: 26px; letter-spacing: -.02em; margin: 0; }
+    .head p { margin: 2px 0 0; color: var(--muted); }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+    .seg button { border: 0; background: none; padding: 7px 14px; font: 500 13px Inter, sans-serif; color: var(--muted); cursor: pointer; }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button.active { background: var(--accent-soft); color: var(--accent); }
+    select { height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 500 13px Inter, sans-serif; }
+
+    /* KPI */
+    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; min-width: 0; }
+    .kpi .label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+    .kpi .value { font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
+    .delta { font-size: 12.5px; font-weight: 600; padding: 2px 7px; border-radius: 99px; }
+    .delta.up { color: var(--ok); background: var(--ok-bg); }
+    .delta.down { color: var(--bad); background: var(--bad-bg); }
+    .delta + span { font-size: 12.5px; color: var(--muted); margin-left: 4px; }
+
+    .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
+    .card h2 { font-size: 15px; margin: 0; }
+    .card .card-sub { font-size: 12.5px; color: var(--muted); margin: 2px 0 14px; }
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .chart-box { position: relative; height: 280px; }
+    .chart-box.sm { height: 220px; }
+
+    /* Quota */
+    .quota-bar { height: 10px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin: 14px 0 8px; }
+    .quota-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s; }
+    .quota-meta { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; font-size: 12.5px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+    /* Tabel */
+    .table-wrap { overflow-x: auto; margin: 0 -18px -18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--surface-2); white-space: nowrap; }
+    td { padding: 10px 18px; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    tr:last-child td { border-bottom: 0; }
+    td.num, th.num { text-align: right; }
+    .method { display: inline-block; font: 600 10.5px "JetBrains Mono", monospace; padding: 2px 7px; border-radius: 4px; min-width: 52px; text-align: center; }
+    .m-GET { color: var(--get); background: var(--get-bg); } .m-POST { color: var(--post); background: var(--post-bg); }
+    .m-PATCH { color: var(--patch); background: var(--patch-bg); } .m-DELETE { color: var(--delete); background: var(--delete-bg); }
+    .st { font: 600 11.5px "JetBrains Mono", monospace; padding: 2px 7px; border-radius: 4px; }
+    .st-2 { color: var(--ok); background: var(--ok-bg); } .st-4 { color: var(--warn); background: var(--warn-bg); } .st-5 { color: var(--bad); background: var(--bad-bg); }
+    .bar-cell { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    .mini-bar { width: 70px; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+    .mini-bar i { display: block; height: 100%; background: var(--ok); }
+    .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ok); font-weight: 600; }
+    .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+    tr.new td { animation: flash 1.2s ease; }
+    @keyframes flash { from { background: var(--accent-soft); } }
+
+    @media (max-width: 1080px) {
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .topbar { padding: 0 12px; gap: 8px; }
+      .nav, .user-btn .uname { display: none; }
+      main { padding: 20px 16px 60px; }
+      .kpis { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+      .kpi .value { font-size: 22px; }
+      .card { padding: 14px; }
+      .table-wrap { margin: 0 -14px -14px; }
+      th, td { padding: 9px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="dashboard.html">
+    <span class="brand-logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></span>
+    Pickup Console
+  </a>
+  <nav class="nav">
+    <a href="dashboard.html" class="active">Dashboard</a>
+    <a href="index.html">Dokumentasi API</a>
+  </nav>
+  <span class="spacer"></span>
+  <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg>
+  </button>
+  <div class="user">
+    <button class="user-btn" id="userBtn"><span class="avatar" id="avatar">A</span><span class="uname" id="uname">Admin</span></button>
+    <div class="user-menu" id="userMenu">
+      <div class="info"><b id="menuName"></b><span id="menuEmail" class="mono" style="font-size:12px;color:var(--muted)"></span><br><span id="menuRole" style="color:var(--muted)"></span></div>
+      <button id="logoutBtn">Keluar</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="head">
+    <div>
+      <h1>Penggunaan API</h1>
+      <p id="periodText">Ringkasan request ke Pickup Service API</p>
+    </div>
+    <div class="controls">
+      <select id="keyFilter" aria-label="Filter API key">
+        <option value="all">Semua API key</option>
+      </select>
+      <div class="seg" id="rangeSeg">
+        <button data-days="7" class="active">7 hari</button>
+        <button data-days="14">14 hari</button>
+        <button data-days="30">30 hari</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI -->
+  <section class="kpis" id="kpis"></section>
+
+  <!-- Grafik utama + kuota -->
+  <section class="grid">
+    <div class="card">
+      <div class="card-head">
+        <div><h2>Request per hari</h2><p class="card-sub">Request berhasil (2xx) dan gagal (4xx/5xx)</p></div>
+      </div>
+      <div class="chart-box"><canvas id="trafficChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Kuota hari ini</h2>
+      <p class="card-sub">Batas paket Developer: 10.000 request/hari</p>
+      <div style="font-size:28px;font-weight:700;letter-spacing:-.02em" id="quotaValue">0</div>
+      <div class="quota-bar"><div class="quota-fill" id="quotaFill"></div></div>
+      <div class="quota-meta"><span id="quotaPct">0%</span><span>Reset 00:00 WIB</span></div>
+
+      <h2 style="margin-top:26px">Kode status HTTP</h2>
+      <p class="card-sub">Distribusi respons pada periode terpilih</p>
+      <div class="chart-box sm"><canvas id="statusChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Endpoint paling sering dipanggil</h2>
+      <p class="card-sub">Jumlah request, tingkat keberhasilan, dan latensi rata-rata</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Endpoint</th><th class="num">Request</th><th class="num">Sukses</th><th class="num">Latensi</th></tr></thead>
+          <tbody id="endpointTable"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Latensi p95</h2>
+      <p class="card-sub">Waktu respons (ms) 95% request tercepat</p>
+      <div class="chart-box sm" style="height:300px"><canvas id="latencyChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div><h2>Log request terbaru</h2><p class="card-sub">Data dummy, diperbarui otomatis setiap beberapa detik</p></div>
+      <span class="live">LIVE</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Waktu</th><th>Method</th><th>Endpoint</th><th>Status</th><th class="num">Latensi</th><th>API key</th><th>IP</th></tr></thead>
+        <tbody id="logTable"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ============================================================
+   SESSION (login dummy)
+   ============================================================ */
+function getSession() {
+  try { return JSON.parse(sessionStorage.getItem("pickup_session") || localStorage.getItem("pickup_session")); }
+  catch (_) { return null; }
+}
+const session = getSession() || { name: "Tamu", email: "-", role: "-" };
+document.getElementById("avatar").textContent = session.name.charAt(0).toUpperCase();
+document.getElementById("uname").textContent = session.name;
+document.getElementById("menuName").textContent = session.name;
+document.getElementById("menuEmail").textContent = session.email;
+document.getElementById("menuRole").textContent = session.role;
+
+const userMenu = document.getElementById("userMenu");
+document.getElementById("userBtn").addEventListener("click", e => { e.stopPropagation(); userMenu.classList.toggle("open"); });
+document.addEventListener("click", e => { if (!userMenu.contains(e.target)) userMenu.classList.remove("open"); });
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  try { sessionStorage.removeItem("pickup_session"); localStorage.removeItem("pickup_session"); } catch (_) {}
+  location.href = "login.html";
+});
+
+/* ============================================================
+   DATA DUMMY
+   Dibuat dengan random ber-seed agar angka konsisten setiap
+   halaman dibuka. Ganti bagian ini dengan fetch() ke API
+   statistik asli jika backend sudah tersedia.
+   ============================================================ */
+function mulberry32(a) {
+  return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+const rand = mulberry32(2026);
+
+const ENDPOINTS = [
+  { method: "GET",    path: "/tracking/{awb}",          weight: 34, latency: 85,  errRate: .03 },
+  { method: "POST",   path: "/rates/check",             weight: 22, latency: 140, errRate: .04 },
+  { method: "POST",   path: "/pickups",                 weight: 14, latency: 260, errRate: .08 },
+  { method: "GET",    path: "/pickups",                 weight: 11, latency: 120, errRate: .02 },
+  { method: "GET",    path: "/pickups/{pickup_id}",     weight: 8,  latency: 95,  errRate: .03 },
+  { method: "GET",    path: "/areas",                   weight: 5,  latency: 60,  errRate: .01 },
+  { method: "POST",   path: "/auth/token",              weight: 4,  latency: 180, errRate: .10 },
+  { method: "PATCH",  path: "/pickups/{pickup_id}/reschedule", weight: 1.2, latency: 210, errRate: .09 },
+  { method: "DELETE", path: "/pickups/{pickup_id}",     weight: 0.8, latency: 150, errRate: .12 }
+];
+const API_KEYS = [
+  { key: "pk_live_4f9a2c", name: "Toko Maju Jaya", share: .46 },
+  { key: "pk_live_9b13e7", name: "Gudang Sentosa", share: .31 },
+  { key: "pk_test_77c0aa", name: "Aplikasi Mahasiswa", share: .23 }
+];
+const DAYS_TOTAL = 60; // simpan 60 hari agar bisa membandingkan dengan periode sebelumnya
+const totalWeight = ENDPOINTS.reduce((s, e) => s + e.weight, 0);
+
+// days[i] = { date, perKey: { key: { perEndpoint: [{ ok, e4, e5, lat }] , p95 } } }
+const days = [];
+const today = new Date(); today.setHours(0, 0, 0, 0);
+for (let i = DAYS_TOTAL - 1; i >= 0; i--) {
+  const d = new Date(today); d.setDate(d.getDate() - i);
+  const weekend = d.getDay() === 0 || d.getDay() === 6;
+  const growth = 1 + (DAYS_TOTAL - i) * 0.006;                 // tren naik pelan
+  const base = (weekend ? 4200 : 7400) * growth * (0.85 + rand() * 0.3);
+  const perKey = {};
+  API_KEYS.forEach(k => {
+    const keyTotal = base * k.share;
+    perKey[k.key] = ENDPOINTS.map(ep => {
+      const n = Math.round(keyTotal * ep.weight / totalWeight);
+      const err = n * ep.errRate * (0.7 + rand() * 0.6);
+      const e5 = Math.round(err * 0.18), e4 = Math.round(err - e5);
+      return { ok: n - e4 - e5, e4, e5, lat: ep.latency * (0.85 + rand() * 0.35) };
+    });
+  });
+  days.push({ date: d, perKey, p95: Math.round(320 + rand() * 120 + (weekend ? -40 : 0)) });
+}
+
+/* ============================================================
+   AGREGASI
+   ============================================================ */
+const state = { range: 7, key: "all" };
+
+function keysFor(k) { return k === "all" ? API_KEYS.map(x => x.key) : [k]; }
+
+function aggregate(slice, key) {
+  const keys = keysFor(key);
+  const perDay = slice.map(d => {
+    let ok = 0, e4 = 0, e5 = 0;
+    keys.forEach(k => d.perKey[k].forEach(r => { ok += r.ok; e4 += r.e4; e5 += r.e5; }));
+    return { date: d.date, ok, e4, e5, total: ok + e4 + e5, p95: d.p95 };
+  });
+  const perEndpoint = ENDPOINTS.map((ep, i) => {
+    let ok = 0, err = 0, latSum = 0, cnt = 0;
+    slice.forEach(d => keys.forEach(k => {
+      const r = d.perKey[k][i]; ok += r.ok; err += r.e4 + r.e5;
+      latSum += r.lat * (r.ok + r.e4 + r.e5); cnt += r.ok + r.e4 + r.e5;
+    }));
+    return { ...ep, total: ok + err, ok, avgLat: cnt ? latSum / cnt : 0 };
+  }).sort((a, b) => b.total - a.total);
+  const sum = f => perDay.reduce((s, d) => s + d[f], 0);
+  const total = sum("total"), ok = sum("ok"), e4 = sum("e4"), e5 = sum("e5");
+  const latAvg = perEndpoint.reduce((s, e) => s + e.avgLat * e.total, 0) / (total || 1);
+  return { perDay, perEndpoint, total, ok, e4, e5, successRate: ok / (total || 1), latAvg };
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const fmt = n => Math.round(n).toLocaleString("id-ID");
+const fmtDate = d => d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const charts = {};
+
+function deltaHTML(cur, prev, invert) {
+  if (!prev) return "";
+  const pct = (cur - prev) / prev * 100;
+  const good = invert ? pct <= 0 : pct >= 0;
+  return `<span class="delta ${good ? "up" : "down"}">${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%</span><span>vs periode lalu</span>`;
+}
+
+function renderKPIs(cur, prev) {
+  const items = [
+    { label: "Total request", value: fmt(cur.total), d: deltaHTML(cur.total, prev.total) },
+    { label: "Tingkat keberhasilan", value: (cur.successRate * 100).toFixed(2) + "%", d: deltaHTML(cur.successRate, prev.successRate) },
+    { label: "Latensi rata-rata", value: Math.round(cur.latAvg) + " ms", d: deltaHTML(cur.latAvg, prev.latAvg, true) },
+    { label: "Request gagal", value: fmt(cur.e4 + cur.e5), d: deltaHTML(cur.e4 + cur.e5, prev.e4 + prev.e5, true) }
+  ];
+  document.getElementById("kpis").innerHTML = items.map(k =>
+    `<div class="card kpi"><div class="label">${k.label}</div><div class="value">${k.value}</div>${k.d}</div>`).join("");
+}
+
+function baseOptions() {
+  const grid = css("--grid"), muted = css("--muted");
+  return {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: { legend: { labels: { color: muted, boxWidth: 10, boxHeight: 10, usePointStyle: true, font: { family: "Inter", size: 12 } } },
+               tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y ?? c.parsed)}` } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: muted, font: { family: "Inter", size: 11 }, maxRotation: 0, autoSkipPadding: 12 }, border: { color: grid } },
+      y: { grid: { color: grid }, ticks: { color: muted, font: { family: "Inter", size: 11 }, callback: v => v >= 1000 ? (v / 1000) + "rb" : v }, border: { display: false }, beginAtZero: true }
+    }
+  };
+}
+
+function upsertChart(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), config);
+}
+
+function renderCharts(cur) {
+  if (!window.Chart) return;
+  const labels = cur.perDay.map(d => fmtDate(d.date));
+
+  upsertChart("trafficChart", {
+    type: "bar",
+    data: { labels, datasets: [
+      { label: "Berhasil (2xx)", data: cur.perDay.map(d => d.ok), backgroundColor: css("--c2"), borderRadius: 3, stack: "s" },
+      { label: "Client error (4xx)", data: cur.perDay.map(d => d.e4), backgroundColor: css("--c5"), borderRadius: 3, stack: "s" },
+      { label: "Server error (5xx)", data: cur.perDay.map(d => d.e5), backgroundColor: css("--bad"), borderRadius: 3, stack: "s" }
+    ] },
+    options: (() => { const o = baseOptions(); o.scales.x.stacked = o.scales.y.stacked = true; return o; })()
+  });
+
+  upsertChart("statusChart", {
+    type: "doughnut",
+    data: { labels: ["200/201 OK", "4xx Client", "5xx Server"],
+      datasets: [{ data: [cur.ok, cur.e4, cur.e5], backgroundColor: [css("--c3"), css("--c5"), css("--bad")], borderColor: css("--surface"), borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: "68%",
+      plugins: { legend: { position: "right", labels: { color: css("--muted"), boxWidth: 10, usePointStyle: true, font: { family: "Inter", size: 12 } } },
+                 tooltip: { callbacks: { label: c => ` ${c.label}: ${fmt(c.parsed)} (${(c.parsed / cur.total * 100).toFixed(1)}%)` } } } }
+  });
+
+  const lo = baseOptions();
+  lo.plugins.legend.display = false;
+  lo.plugins.tooltip.callbacks.label = c => ` p95: ${c.parsed.y} ms`;
+  lo.scales.y.beginAtZero = false;
+  lo.scales.y.ticks.callback = v => v + " ms";
+  upsertChart("latencyChart", {
+    type: "line",
+    data: { labels, datasets: [{ label: "p95", data: cur.perDay.map(d => d.p95), borderColor: css("--c1"), backgroundColor: css("--accent-soft"), fill: true, tension: .35, pointRadius: 0, pointHoverRadius: 4, borderWidth: 2 }] },
+    options: lo
+  });
+}
+
+function renderEndpointTable(cur) {
+  document.getElementById("endpointTable").innerHTML = cur.perEndpoint.map(e => {
+    const sr = e.ok / (e.total || 1) * 100;
+    return `<tr>
+      <td><span class="method m-${e.method}">${e.method}</span> <span class="mono" style="font-size:12.5px">${e.path}</span></td>
+      <td class="num">${fmt(e.total)}</td>
+      <td class="num"><div class="bar-cell">${sr.toFixed(1)}%<span class="mini-bar"><i style="width:${sr}%"></i></span></div></td>
+      <td class="num">${Math.round(e.avgLat)} ms</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderQuota() {
+  const t = days[days.length - 1];
+  let used = 0;
+  keysFor(state.key).forEach(k => t.perKey[k].forEach(r => used += r.ok + r.e4 + r.e5));
+  // hari ini baru berjalan sebagian: skala sesuai jam sekarang
+  const now = new Date();
+  used = Math.round(used * Math.max(0.05, (now.getHours() * 60 + now.getMinutes()) / 1440));
+  const limit = 10000, pct = Math.min(100, used / limit * 100);
+  document.getElementById("quotaValue").innerHTML = `${fmt(used)} <span style="font-size:14px;font-weight:500;color:var(--muted)">/ ${fmt(limit)}</span>`;
+  document.getElementById("quotaFill").style.width = pct + "%";
+  document.getElementById("quotaFill").style.background = pct > 85 ? css("--bad") : pct > 65 ? css("--warn") : css("--accent");
+  document.getElementById("quotaPct").textContent = pct.toFixed(1) + "% terpakai";
+}
+
+function render() {
+  const n = state.range;
+  const cur = aggregate(days.slice(-n), state.key);
+  const prev = aggregate(days.slice(-2 * n, -n), state.key);
+  const first = days[days.length - n].date, last = days[days.length - 1].date;
+  document.getElementById("periodText").textContent =
+    `${fmtDate(first)} – ${fmtDate(last)} ${last.getFullYear()} · ${state.key === "all" ? "semua API key" : API_KEYS.find(k => k.key === state.key).name}`;
+  renderKPIs(cur, prev);
+  renderCharts(cur);
+  renderEndpointTable(cur);
+  renderQuota();
+}
+
+/* ============================================================
+   LOG REQUEST "LIVE"
+   ============================================================ */
+const logs = [];
+function randomLog(time) {
+  const r = rand() * totalWeight;
+  let acc = 0, ep = ENDPOINTS[0];
+  for (const e of ENDPOINTS) { acc += e.weight; if (r <= acc) { ep = e; break; } }
+  const keys = keysFor(state.key);
+  const key = keys[Math.floor(rand() * keys.length)];
+  const x = rand();
+  const status = x < ep.errRate * .18 ? 500 : x < ep.errRate ? [400, 401, 404, 409, 422, 429][Math.floor(rand() * 6)] : (ep.method === "POST" && ep.path === "/pickups" ? 201 : 200);
+  const path = ep.path.replace("{awb}", "PS26112" + String(Math.floor(rand() * 9999)).padStart(4, "0") + "ID")
+                      .replace("{pickup_id}", "PCK-20261124-" + String(Math.floor(rand() * 999)).padStart(4, "0"));
+  return { time, method: ep.method, path, status, lat: Math.round(ep.latency * (0.6 + rand() * 0.9)), key,
+           ip: `36.${70 + Math.floor(rand() * 20)}.${Math.floor(rand() * 255)}.${Math.floor(rand() * 255)}` };
+}
+function renderLogs(highlight) {
+  document.getElementById("logTable").innerHTML = logs.slice(0, 12).map((l, i) => `
+    <tr class="${highlight && i === 0 ? "new" : ""}">
+      <td class="mono" style="font-size:12px">${l.time.toLocaleTimeString("id-ID")}</td>
+      <td><span class="method m-${l.method}">${l.method}</span></td>
+      <td class="mono" style="font-size:12.5px">${l.path}</td>
+      <td><span class="st st-${String(l.status)[0]}">${l.status}</span></td>
+      <td class="num">${l.lat} ms</td>
+      <td class="mono" style="font-size:12px">${l.key}</td>
+      <td class="mono" style="font-size:12px;color:var(--muted)">${l.ip}</td>
+    </tr>`).join("");
+}
+function seedLogs() {
+  logs.length = 0;
+  const now = Date.now();
+  for (let i = 0; i < 12; i++) logs.push(randomLog(new Date(now - i * (4000 + rand() * 9000))));
+  renderLogs(false);
+}
+setInterval(() => { logs.unshift(randomLog(new Date())); logs.length = Math.min(logs.length, 50); renderLogs(true); }, 3500);
+
+/* ============================================================
+   KONTROL
+   ============================================================ */
+const keySel = document.getElementById("keyFilter");
+API_KEYS.forEach(k => keySel.insertAdjacentHTML("beforeend", `<option value="${k.key}">${k.name} (${k.key})</option>`));
+keySel.addEventListener("change", () => { state.key = keySel.value; render(); seedLogs(); });
+
+document.getElementById("rangeSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.querySelectorAll("#rangeSeg button").forEach(x => x.classList.toggle("active", x === b));
+  state.range = +b.dataset.days; render();
+});
+
+const root = document.documentElement;
+document.getElementById("themeBtn").addEventListener("click", () => {
+  const isDark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = isDark ? "light" : "dark";
+  try { localStorage.setItem("theme", root.dataset.theme); } catch (_) {}
+  render(); // gambar ulang grafik dengan warna tema baru
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!root.dataset.theme) render(); });
+
+if (window.Chart) {
+  Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+} else {
+  document.querySelectorAll(".chart-box").forEach(b => b.innerHTML = '<p style="color:var(--muted);font-size:13px">Grafik gagal dimuat. Periksa koneksi internet (Chart.js dari CDN).</p>');
+}
+render();
+seedLogs();
+</script>
+</body>
+</html>
